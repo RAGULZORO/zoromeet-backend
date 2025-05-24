@@ -88,6 +88,14 @@ io.on('connection', (socket) => {
       }
     });
   });
+  // Add this to your server-side socket.io code
+socket.on('setRoomPassword', ({ roomId, password }) => {
+  if (rooms[roomId]) {
+    rooms[roomId].password = password; // Hash this in production!
+    rooms[roomId].isPrivate = true;
+    socket.emit('passwordSet');
+  }
+});
 });
 
 const PORT = process.env.PORT || 10000;
