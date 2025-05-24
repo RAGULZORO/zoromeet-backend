@@ -81,9 +81,21 @@ io.on('connection', (socket) => {
       }
     });
   });
+});// Make sure your server handles room IDs properly
+socket.on('joinRoom', ({ roomId }) => {
+  if (!rooms[roomId]) {
+    rooms[roomId] = { users: [] }; // Create room if doesn't exist
+  }
+  
+  // Add user to room
+  rooms[roomId].users.push(socket.id);
+  socket.join(roomId);
+  
+  // Confirm join
+  socket.emit('roomJoined', { id: roomId });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
