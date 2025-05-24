@@ -5,16 +5,15 @@ const cors = require('cors');
 
 const app = express();
 
-// CORS configuration
 app.use(cors({
-  origin: "https://zoromeet.vercel.app", // Your Vercel frontend URL
+  origin: "https://zoromeet.vercel.app",
   credentials: true
 }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "https://zoromeet.vercel.app", // Must match your frontend URL
+    origin: "https://zoromeet.vercel.app",
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -26,10 +25,20 @@ const rooms = new Map();
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
+  // ✅ Move this joinRoom block INSIDE here
+  socket.on('joinRoom', ({ roomId }) => {
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, { users: [] });
+    }
+
+    rooms.get(roomId).users.push(socket.id);
+    socket.join(roomId);
+    socket.emit('roomJoined', { id: roomId });
+  });
+
   // Handle joining a room
   socket.on('join-room', (roomName, username) => {
     try {
-      // Create room if it doesn't exist
       if (!rooms.has(roomName)) {
         rooms.set(roomName, {
           users: new Map(),
@@ -39,25 +48,19 @@ io.on('connection', (socket) => {
       }
 
       const room = rooms.get(roomName);
-
-      // Add user to room
       room.users.set(socket.id, username);
       socket.join(roomName);
 
-      // Notify room
       io.to(roomName).emit('user-connected', username);
       console.log(`${username} joined ${roomName}`);
-
-      // Send current room users to the new user
       socket.emit('current-users', Array.from(room.users.values()));
-
     } catch (err) {
       console.error('Join error:', err);
       socket.emit('room-error', 'Failed to join room');
     }
   });
 
-  // Handle WebRTC signaling
+  // WebRTC signaling
   socket.on('signal', (data) => {
     io.to(data.to).emit('signal', {
       from: socket.id,
@@ -65,34 +68,26 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle disconnections
+  // Handle disconnection
   socket.on('disconnect', () => {
     rooms.forEach((room, roomName) => {
-      if (room.users.has(socket.id)) {
+      if (room.users instanceof Map && room.users.has(socket.id)) {
         const username = room.users.get(socket.id);
         room.users.delete(socket.id);
         io.to(roomName).emit('user-disconnected', username);
         console.log(`${username} left ${roomName}`);
 
-        // Clean up empty rooms
         if (room.users.size === 0) {
+          rooms.delete(roomName);
+        }
+      } else if (Array.isArray(room.users)) {
+        room.users = room.users.filter(id => id !== socket.id);
+        if (room.users.length === 0) {
           rooms.delete(roomName);
         }
       }
     });
   });
-});// Make sure your server handles room IDs properly
-socket.on('joinRoom', ({ roomId }) => {
-  if (!rooms[roomId]) {
-    rooms[roomId] = { users: [] }; // Create room if doesn't exist
-  }
-  
-  // Add user to room
-  rooms[roomId].users.push(socket.id);
-  socket.join(roomId);
-  
-  // Confirm join
-  socket.emit('roomJoined', { id: roomId });
 });
 
 const PORT = process.env.PORT || 10000;
